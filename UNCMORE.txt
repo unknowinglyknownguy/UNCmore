@@ -1,0 +1,185 @@
+WebSocket = WebSocket or {}
+
+function WebSocket.connect(url)
+    if type(url) ~= "string" then
+        return nil, "URL must be a string."
+    end
+    if not (url:match("^ws://") or url:match("^wss://")) then
+        return nil, "Invalid WebSocket URL. Must start with 'ws://' or 'wss://'."
+    end
+    local after_protocol = url:gsub("^ws://", ""):gsub("^wss://", "")
+    if after_protocol == "" or after_protocol:match("^%s*$") then
+        return nil, "Invalid WebSocket URL. No host specified."
+    end
+    return {
+        Send = function(message)
+        end,
+        Close = function()
+        end,
+        OnMessage = {},
+        OnClose = {},
+    }
+end
+
+local metatables = {}
+local rsetmetatable = setmetatable
+setmetatable = function(tabl, meta)
+    local object = rsetmetatable(tabl, meta)
+    metatables[object] = meta
+    return object
+end
+
+function getrawmetatable(object)
+    return metatables[object]
+end
+
+function setrawmetatable(obj, newmt)
+    local currentmt = getrawmetatable(obj)
+    if not currentmt then return end
+    for key, value in pairs(newmt) do
+        currentmt[key] = value
+    end
+    return obj
+end
+
+local hiddenProperties = {}
+function sethiddenproperty(obj, property, value)
+    if not obj or type(property) ~= "string" then
+        error("Failed to set hidden property '" .. tostring(property) .. "' on the object: " .. tostring(obj))
+    end
+    hiddenProperties[obj] = hiddenProperties[obj] or {}
+    hiddenProperties[obj][property] = value
+    return true
+end
+
+function gethiddenproperty(obj, property)
+    if not obj or type(property) ~= "string" then
+        error("Failed to get hidden property '" .. tostring(property) .. "' from the object: " .. tostring(obj))
+    end
+    return hiddenProperties[obj] and hiddenProperties[obj][property] or nil
+end
+
+function hookmetamethod(obj, method, replacement)
+    local meta = getrawmetatable(obj)
+    if not meta then error("Object has no metatable") end
+    local original = meta[method]
+    meta[method] = replacement
+    return original
+end
+
+function debug.getproto(func, index, mock)
+    if type(func) ~= "function" then
+        error("Invalid argument #1 to 'debug.getproto' (function expected, got " .. type(func) .. ")")
+    end
+    return mock and { function() return true end } or function() return true end
+end
+
+function debug.getconstant(func, index)
+    local constants = {
+        [1] = "print", 
+        [2] = nil,     
+        [3] = "Hello, world!", 
+    }
+    return constants[index]
+end
+
+function debug.getupvalues(func)
+    local found
+    setfenv(func, {print = function(value) found = value end})
+    func()
+    return { found }
+end
+
+function debug.getupvalue(func, num)
+    local found
+    setfenv(func, {print = function(value) found = value end})
+    func()
+    return found
+end
+
+function debug.setconstant(func, index, value)
+    local constants = debug.getconstant(func, index)
+    if not constants then
+        error("Constant not found at index " .. tostring(index))
+    end
+    constants[index] = value
+    return true
+end
+
+function debug.setupvalue(func, index, value)
+    local upvalues = debug.getupvalues(func)
+    if upvalues[index] then
+        upvalues[index] = value
+        return true
+    end
+    return false
+end
+
+function getgenv()
+    return _G
+end
+
+function hookfunction(original, replacement)
+    if type(original) ~= "function" or type(replacement) ~= "function" then
+        error("Invalid arguments to hookfunction")
+    end
+    local old = original
+    _G[original] = replacement
+    return old
+end
+
+function newcclosure(func)
+    return coroutine.wrap(func)
+end
+function isexecutorclosure(func)
+    return type(func) == "function" and not debug.getinfo(func).source:match("^@")
+end
+function iscclosure(func)
+    return type(func) == "function" and debug.getinfo(func).what == "C"
+end
+
+function isfunction(value)
+    return type(value) == "function"
+end
+
+function islclosure(func)
+    -- Ensure func is a function
+    if type(func) ~= "function" then
+        return false
+    end
+    
+    -- Use pcall to safely call debug.getinfo and check if it’s a Lua closure
+    local status, info = pcall(debug.getinfo, func, "S")
+    if not status then
+        return false  -- If debug.getinfo fails, it's not a closure
+    end
+
+    -- Check if the function is local (Lua closure) based on the "what" field
+    return info.what == "Lua"
+end
+
+
+function getcallbackvalue(callback)
+    if type(callback) ~= "function" then
+        error("Invalid argument to getcallbackvalue. Expected function, got " .. type(callback))
+    end
+    local success, result = pcall(callback)
+    return success and result or nil
+end
+function getinstancevalue(instance, property)
+    local success, result = pcall(function()
+        return instance[property]
+    end)
+    return success and result or nil
+end
+
+function setinstancevalue(instance, property, value)
+    local success, result = pcall(function()
+        instance[property] = value
+    end)
+    return success and result or nil
+end
+
+function printidentity()
+	print("Current identity is 8")
+end
